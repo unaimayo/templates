@@ -1,0 +1,233 @@
+heat_template_version: 2013-05-23
+
+description: >
+  A document-based template to configure your Software Defined Environment.
+
+parameters:
+  flavor:
+    type: string
+    description: Flavor to be used for compute instance
+    default: "m1.small"
+  key_name:
+    type: string
+    description: Name of key-pair to be used for compute instance
+    default: "TODO"
+  network_id_ubuntu-trusty-cloudimg-amd64:
+    type: string
+    description: Generated to reference 'network_id_ubuntu-trusty-cloudimg-amd64' network.
+    default: "c2c399c8-9e02-46ba-b122-bd5d45d01fd7"
+  public_network_id:
+    type: string
+    description: Generated for floating IP
+    default: "TODO"
+  ucd_server_url:
+    type: string
+    description: The server URL for agent communication to UrbanCode Deploy. Do *not* add a trailing slash.
+    default: "http://192.168.27.100:8081"
+  ucd_user:
+    type: string
+    description: The user credential for the UrbanCode Deploy server.
+    default: "admin"
+  ucd_password:
+    type: string
+    description: The user credential for the UrbanCode Deploy server.
+    hidden: true
+  ucd_relay_url:
+    type: string
+    description: The server URL for an agent relay - leave as 'None' to enable agents to communicate with server directly.
+    default: "None"
+
+resources:
+## REFERENCE {"private":{"type": "OS::Neutron::Net", "properties": {"name": "private", "network_id": "c2c399c8-9e02-46ba-b122-bd5d45d01fd7"}}}
+
+  ubuntu-trusty-cloudimg-amd64:
+    type: OS::Nova::Server
+    properties:
+      user_data_format: RAW
+      user_data: {get_resource: mysql_server_mime}
+      networks:
+          - port: { get_resource: ubuntu-trusty-cloudimg-amd64_private_port }
+      name: mysql_server
+      image: "91c06418-e6b0-4ea1-b419-bfd3ff4e902d" # ubuntu-trusty-cloudimg-amd64
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+
+
+  MySQL_Server:
+    type: IBM::UrbanCode::SoftwareDeploy::UCD
+    properties:
+      apply_config: { get_resource: MySQL_Server_sw_config }
+      server: ubuntu-trusty-cloudimg-amd64
+      version: "LATEST" 
+      agent_timeout: "360"
+
+  MySQL_Server_sw_config:
+    type: IBM::UrbanCode::SoftwareConfig::UCD
+    properties: 
+      name: "MySQL Server"
+      component_process: deploy
+      component_process_timeout: "300"
+      ucd_server_url: { get_param: ucd_server_url } # these should come from resource_tree
+      ucd_username: { get_param: ucd_user }
+      ucd_password: { get_param: ucd_password }
+      application: { get_attr: [resource_tree, application_name] }
+      environment_name: { get_attr: [resource_tree, environment_name] }
+      inputs:
+
+  jke.db:
+    depends_on: MySQL_Server
+    type: IBM::UrbanCode::SoftwareDeploy::UCD
+    properties:
+      apply_config: { get_resource: jke.db_sw_config }
+      server: ubuntu-trusty-cloudimg-amd64
+      version: "LATEST" 
+      agent_timeout: "360"
+
+  jke.db_sw_config:
+    type: IBM::UrbanCode::SoftwareConfig::UCD
+    properties: 
+      name: "jke.db"
+      component_process: deploy
+      component_process_timeout: "300"
+      ucd_server_url: { get_param: ucd_server_url } # these should come from resource_tree
+      ucd_username: { get_param: ucd_user }
+      ucd_password: { get_param: ucd_password }
+      application: { get_attr: [resource_tree, application_name] }
+      environment_name: { get_attr: [resource_tree, environment_name] }
+
+  mysql_server_mime:
+    type: OS::Heat::MultipartMime
+    properties:
+      parts:
+        - config: {get_resource: ucd_agent_install }
+
+  ubuntu-trusty-cloudimg-amd64_private_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: network_id_ubuntu-trusty-cloudimg-amd64 }
+
+  ubuntu-trusty-cloudimg-amd641:
+    type: OS::Nova::Server
+    properties:
+      user_data_format: RAW
+      user_data: {get_resource: was_server_mime}
+      networks:
+          - port: { get_resource: ubuntu-trusty-cloudimg-amd641_private_port }
+      name: was_server
+      image: "91c06418-e6b0-4ea1-b419-bfd3ff4e902d" # ubuntu-trusty-cloudimg-amd64
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+
+  jke.war:
+    depends_on: WebSphere_Liberty_Profile
+    type: IBM::UrbanCode::SoftwareDeploy::UCD
+    properties:
+      apply_config: { get_resource: jke.war_sw_config }
+      server: ubuntu-trusty-cloudimg-amd641
+      version: "LATEST" 
+      agent_timeout: "360"
+
+  jke.war_sw_config:
+    type: IBM::UrbanCode::SoftwareConfig::UCD
+    properties: 
+      name: "jke.war"
+      component_process: deploy
+      component_process_timeout: "300"
+      ucd_server_url: { get_param: ucd_server_url } # these should come from resource_tree
+      ucd_username: { get_param: ucd_user }
+      ucd_password: { get_param: ucd_password }
+      application: { get_attr: [resource_tree, application_name] }
+      environment_name: { get_attr: [resource_tree, environment_name] }
+      inputs:
+        JKE_DB_HOST: { get_attr: [ubuntu-trusty-cloudimg-amd64, networks, private, 0] }  # Private IP address for 'ubuntu-trusty-cloudimg-amd64'
+
+  WebSphere_Liberty_Profile:
+    depends_on: jke.db
+    type: IBM::UrbanCode::SoftwareDeploy::UCD
+    properties:
+      apply_config: { get_resource: WebSphere_Liberty_Profile_sw_config }
+      server: ubuntu-trusty-cloudimg-amd641
+      version: "LATEST" 
+      agent_timeout: "360"
+
+  WebSphere_Liberty_Profile_sw_config:
+    type: IBM::UrbanCode::SoftwareConfig::UCD
+    properties: 
+      name: "WebSphere Liberty Profile"
+      component_process: deploy
+      component_process_timeout: "300"
+      ucd_server_url: { get_param: ucd_server_url } # these should come from resource_tree
+      ucd_username: { get_param: ucd_user }
+      ucd_password: { get_param: ucd_password }
+      application: { get_attr: [resource_tree, application_name] }
+      environment_name: { get_attr: [resource_tree, environment_name] }
+      inputs:
+
+  was_server_mime:
+    type: OS::Heat::MultipartMime
+    properties:
+      parts:
+        - config: {get_resource: ucd_agent_install }
+
+  ubuntu-trusty-cloudimg-amd641_ubuntu-trusty-cloudimg-amd641_private_port_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_network_id }
+      port_id: { get_resource: ubuntu-trusty-cloudimg-amd641_private_port }
+
+  ubuntu-trusty-cloudimg-amd641_private_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: network_id_ubuntu-trusty-cloudimg-amd64 }
+
+  resource_tree:
+    type: IBM::UrbanCode::ResourceTree
+    properties: 
+       urbancode_deploy_url: { get_param: ucd_server_url }
+       username: { get_param: ucd_user }
+       password: { get_param: ucd_password }
+       team_mappings: 
+       application: JKE
+       base_resource_group: 
+
+  ucd_agent_install:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config:
+        str_replace:
+          template: |
+            #!/usr/bin/env bash
+            arch=`uname -ms | awk '{print tolower($0)}' | tr " " "-" `
+            agent_archive=ibm-ucd-agent-$arch.tgz
+            if [ "_ucd_relay_url_" != "None" ]; then
+              proxy_args="--proxy _ucd_relay_url_:20080"
+              ucd_remote_host=_ucd_relay_url_
+              agent_args="-r -d"
+            else
+              proxy_args=
+              agent_args=
+              ucd_remote_host=_ucd_server_url_
+            fi
+            curl $proxy_args -Lk -o /tmp/$agent_archive -u _ucd_user_:_ucd_password_ "_ucd_server_url_/cli/version/downloadArtifacts?component=ucd-agent-$arch&version=_agent_version_&singleFilePath=$agent_archive"
+            tar xfz /tmp/$agent_archive -C /tmp
+            /tmp/ibm-ucd-agent-install/install-agent-with-options.sh -t "_agent_team_" -s $ucd_remote_host $agent_args -x start -n _agent_name_ 
+          params:
+            _agent_name_:
+               str_replace:
+                  template: |
+                    "_application_name_._environment_name_"
+                  params:
+                    _application_name_: { get_attr: [resource_tree, application_name ] }
+                    _environment_name_: { get_param: "OS::stack_name" }
+            _ucd_server_url_: { get_param: ucd_server_url }
+            _ucd_relay_url_: { get_param: ucd_relay_url }
+            _ucd_user_ : { get_param: ucd_user }
+            _ucd_password_ : { get_param: ucd_password }
+            _agent_version_ : 7.1
+            _agent_team_ :
+
+outputs:
+  blueprint_url:
+    description: Blueprint Origin URL
+    value:  http://192.168.27.100:8080/landscaper/view/projects?open=demo_00000000_0000_0000_0000_000000000012-OrionContent/default/two-nodes/two-nodes.yml
+
