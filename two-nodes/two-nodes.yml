@@ -74,27 +74,6 @@ resources:
       environment_name: { get_attr: [resource_tree, environment_name] }
       inputs:
 
-  jke.db:
-    depends_on: MySQL_Server
-    type: IBM::UrbanCode::SoftwareDeploy::UCD
-    properties:
-      apply_config: { get_resource: jke.db_sw_config }
-      server: ubuntu-trusty-cloudimg-amd64
-      version: "LATEST" 
-      agent_timeout: "360"
-
-  jke.db_sw_config:
-    type: IBM::UrbanCode::SoftwareConfig::UCD
-    properties: 
-      name: "jke.db"
-      component_process: deploy
-      component_process_timeout: "300"
-      ucd_server_url: { get_param: ucd_server_url } # these should come from resource_tree
-      ucd_username: { get_param: ucd_user }
-      ucd_password: { get_param: ucd_password }
-      application: { get_attr: [resource_tree, application_name] }
-      environment_name: { get_attr: [resource_tree, environment_name] }
-
   mysql_server_mime:
     type: OS::Heat::MultipartMime
     properties:
@@ -118,31 +97,8 @@ resources:
       flavor: { get_param: flavor }
       key_name: { get_param: key_name }
 
-  jke.war:
-    depends_on: WebSphere_Liberty_Profile
-    type: IBM::UrbanCode::SoftwareDeploy::UCD
-    properties:
-      apply_config: { get_resource: jke.war_sw_config }
-      server: ubuntu-trusty-cloudimg-amd641
-      version: "LATEST" 
-      agent_timeout: "360"
-
-  jke.war_sw_config:
-    type: IBM::UrbanCode::SoftwareConfig::UCD
-    properties: 
-      name: "jke.war"
-      component_process: deploy
-      component_process_timeout: "300"
-      ucd_server_url: { get_param: ucd_server_url } # these should come from resource_tree
-      ucd_username: { get_param: ucd_user }
-      ucd_password: { get_param: ucd_password }
-      application: { get_attr: [resource_tree, application_name] }
-      environment_name: { get_attr: [resource_tree, environment_name] }
-      inputs:
-        JKE_DB_HOST: { get_attr: [ubuntu-trusty-cloudimg-amd64, networks, private, 0] }  # Private IP address for 'ubuntu-trusty-cloudimg-amd64'
-
   WebSphere_Liberty_Profile:
-    depends_on: jke.db
+    depends_on: MySQL_Server
     type: IBM::UrbanCode::SoftwareDeploy::UCD
     properties:
       apply_config: { get_resource: WebSphere_Liberty_Profile_sw_config }
